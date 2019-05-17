@@ -82,6 +82,10 @@ class ResNet(nn.Module):
         layers = []
         for stride in strides:
             layers.append(block(self.in_planes, planes, stride))
+            # 64*64, 64*64 ..
+            # 64*128(stride=2) 128*128 ..
+            # 128*256(stride=2),256*256,..
+            # 256*512(stride=2) 512*512 ..
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -121,60 +125,144 @@ class BaseBlock(nn.Module):
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
 
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion * planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion * planes)
-            )
+        # self.shortcut = nn.Sequential()
+        # if stride != 1 or in_planes != self.expansion * planes:
+        #     self.shortcut = nn.Sequential(
+        #         nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+        #         nn.BatchNorm2d(self.expansion * planes)
+        #     )
 
     def forward(self, x):
+        # print('x size', x.size())
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out += self.shortcut(x)
-        out = F.relu(out)
+        # out += self.shortcut(x)
+        # out = F.relu(out)
         return out
 
 
-class Lm_Net(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10):
-        super(Lm_Net, self).__init__()
+class RfNet(nn.Module):
+    def __init__(self, block, num_blocks, args, num_classes=10):
+        super(RfNet, self).__init__()
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.num_blocks = num_blocks
+        self.layer_list = nn.ModuleList()
+        self.shortcut_list = nn.ModuleList()
+        layer1, shortcut1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        layer2, shortcut2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        layer3, shortcut3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        layer4, shortcut4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer_list.extend([layer1, layer2, layer3, layer4])
+        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3, shortcut4])
         self.linear = nn.Linear(512*block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
-        layers = []
+        layers = nn.ModuleList()
+        shortcuts = nn.ModuleList()
         for stride in strides:
+            # 64*64, 64*64 ..
+            # 64*128(stride=2) 128*128 ..
+            # 128*256(stride=2),256*256,..
+            # 256*512(stride=2) 512*512 ..
             layers.append(block(self.in_planes, planes, stride))
+            shortcut = nn.Sequential()
+            if stride != 1 or self.in_planes != block.expansion * planes:
+                shortcut = nn.Sequential(
+                    nn.Conv2d(self.in_planes, block.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                    nn.BatchNorm2d(block.expansion * planes)
+                )
+            shortcuts.append(shortcut)
             self.in_planes = planes * block.expansion
-        return nn.Sequential(*layers)
+        return layers, shortcuts
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
+        for i in range(4):
+            for j in range(self.num_blocks[i]):
+                # out = F.relu(self.bn1(self.conv1(x)))
+                # out = self.bn2(self.conv2(out))
+                # out += self.shortcut(x)
+                # out = F.relu(out)
+                # return out
+                layer_i = self.layer_list[i]
+                shortcut_i = self.shortcut_list[i]
+                res = shortcut_i[j](out)
+                out = layer_i[j](out)
+                out += res
+                out = F.relu(out)
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
 
 
-def LmNet34():
-    return Lm_Net(BaseBlock, [3,4,6,3])
+def RfNet34(args):
+    return RfNet(block=BaseBlock, num_blocks=[3, 4, 6, 3], args=args)
+
+
+class LmRnnNet(nn.Module):
+    def __init__(self, block, num_blocks, args, num_classes=10):
+        super(LmRnnNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.num_blocks = num_blocks
+        self.layer_list = nn.ModuleList()
+        self.shortcut_list = nn.ModuleList()
+        layer1, shortcut1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        layer2, shortcut2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        layer3, shortcut3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        layer4, shortcut4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer_list.extend([layer1, layer2, layer3, layer4])
+        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3, shortcut4])
+        self.linear = nn.Linear(512*block.expansion, num_classes)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = nn.ModuleList()
+        shortcuts = nn.ModuleList()
+        for stride in strides:
+            # 64*64, 64*64 ..
+            # 64*128(stride=2) 128*128 ..
+            # 128*256(stride=2),256*256,..
+            # 256*512(stride=2) 512*512 ..
+            layers.append(block(self.in_planes, planes, stride))
+            shortcut = nn.Sequential()
+            if stride != 1 or self.in_planes != block.expansion * planes:
+                shortcut = nn.Sequential(
+                    nn.Conv2d(self.in_planes, block.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                    nn.BatchNorm2d(block.expansion * planes)
+                )
+            shortcuts.append(shortcut)
+            self.in_planes = planes * block.expansion
+        return layers
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        for i in range(4):
+            for j in range(self.num_blocks[i]):
+                layer_i = self.layer_list[i]
+                shortcut_i = self.shortcut_list[i]
+                res = shortcut_i[j](out)
+                out = layer_i[j](out)
+                out += res
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+
+
+def LmRnnNet34(args):
+    return LmRnnNet(block=BaseBlock, num_blocks=[3, 4, 6, 3], args=args)
 
 def test():
     net = ResNet18()
-    y = net(torch.randn(1,3,32,32))
+    y = net(torch.randn(1, 3, 32, 32))
     print(y.size())
 
 # test()
