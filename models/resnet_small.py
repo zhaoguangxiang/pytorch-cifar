@@ -146,20 +146,19 @@ class BaseBlock(nn.Module):
 class RfSmall(nn.Module):
     def __init__(self, block, num_blocks, args, num_classes=10):
         super(RfSmall, self).__init__()
-        self.in_planes = 64
+        self.in_planes = 16
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
         self.num_blocks = num_blocks
         self.layer_list = nn.ModuleList()
         self.shortcut_list = nn.ModuleList()
-        layer1, shortcut1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        layer2, shortcut2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        layer3, shortcut3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        layer4, shortcut4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.layer_list.extend([layer1, layer2, layer3, layer4])
-        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3, shortcut4])
-        self.linear = nn.Linear(512*block.expansion, num_classes)
+        layer1, shortcut1 = self._make_layer(block, 16, num_blocks[0], stride=1)
+        layer2, shortcut2 = self._make_layer(block, 32, num_blocks[1], stride=2)
+        layer3, shortcut3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+        self.layer_list.extend([layer1, layer2, layer3])
+        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3])
+        self.linear = nn.Linear(64*block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -204,6 +203,8 @@ class RfSmall(nn.Module):
 
 def RfSmall56(args):
     return RfSmall(block=BaseBlock, num_blocks=[9, 9, 9], args=args)
+
+
 def RfSmall110(args):
     return RfSmall(block=BaseBlock, num_blocks=[18, 18, 18], args=args)
 
@@ -211,20 +212,19 @@ def RfSmall110(args):
 class LmRnnSmall(nn.Module):
     def __init__(self, block, num_blocks, args, num_classes=10):
         super(LmRnnSmall, self).__init__()
-        self.in_planes = 64
+        self.in_planes = 16
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
         self.num_blocks = num_blocks
         self.layer_list = nn.ModuleList()
         self.shortcut_list = nn.ModuleList()
-        layer1, shortcut1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        layer2, shortcut2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        layer3, shortcut3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        layer4, shortcut4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.layer_list.extend([layer1, layer2, layer3, layer4])
-        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3, shortcut4])
-        self.linear = nn.Linear(512*block.expansion, num_classes)
+        layer1, shortcut1 = self._make_layer(block, 16, num_blocks[0], stride=1)
+        layer2, shortcut2 = self._make_layer(block, 32, num_blocks[1], stride=2)
+        layer3, shortcut3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+        self.layer_list.extend([layer1, layer2, layer3])
+        self.shortcut_list.extend([shortcut1, shortcut2, shortcut3])
+        self.linear = nn.Linear(64*block.expansion, num_classes)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
