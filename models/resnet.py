@@ -221,6 +221,7 @@ class LmRnnNet(nn.Module):
         self.layer_list.extend([layer1, layer2, layer3, layer4])
         self.shortcut_list.extend([shortcut1, shortcut2, shortcut3, shortcut4])
         self.linear = nn.Linear(512*block.expansion, num_classes)
+        # if args.layer_rnn:
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)

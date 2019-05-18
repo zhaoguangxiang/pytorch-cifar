@@ -29,6 +29,7 @@ parser.add_argument('--epoch', '-epoch', type=int, default=350, help='')
 parser.add_argument('--log', '-log',  type=str, default='resnet34', help='')
 
 parser.add_argument('--memory_type', type=str, default='no', help='no,rnn,gru,lstm,san,rmc,dnc')
+parser.add_argument('--dim_type', type=str, default='hw,channel', help='')
 parser.add_argument('--include_last', type=int, default=1, help='')
 
 # RMC
@@ -72,7 +73,9 @@ parser.add_argument('--exclude_self',type=bool,default=False)
 parser.add_argument('--ex_vw',default=False,type=bool)
 #
 # # RNN
-# parser.add_argument('--memory_position', type=str, default='before', help='before,after')
+parser.add_argument('--pass_hidden', type=int, default=0, help='pass hidden states through shortcuts')
+parser.add_argument('--rnn_res', type=int, default=0, help='rnn like res')
+parser.add_argument('--memory_position', type=str, default='before', help='before,after')
 parser.add_argument('--rnn_ratio', type=float, default=1, help='rnn_memory_size= rnn_ratio*emb_dim')
 parser.add_argument('--rnn_init_type', type=str, default='zeros')
 parser.add_argument('--rnn_integrate_type', type=str, default='add', help='add,concat_linear,update')
@@ -132,6 +135,8 @@ print('==> Building model..', file=f_log)
 
 if args.model == 'ResNet34':
     net = ResNet34()
+elif args.model == 'ResNet101':
+    net = ResNet101()
 elif args.model == 'RfNet34':
     net = RfNet34(args)
 elif args.model == 'LmRnnNet34':
