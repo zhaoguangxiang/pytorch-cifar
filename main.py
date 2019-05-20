@@ -21,15 +21,19 @@ from utils import progress_bar
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+parser.add_argument('--sch', default=0, type=int,)
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 
-parser.add_argument('--model', '-model', default='ResNet34', type=str, help='ResNet34, RfNet34, Lm_Rnn_Net34')
+parser.add_argument('--model', '-model', default='ResNet34', type=str, help='ResNet34, RfNet34, Lm_Rnn_Net34,')
 parser.add_argument('--gpu', '-gpu', type=int,default=0, help='')
 parser.add_argument('--epoch', '-epoch', type=int, default=350, help='')
 parser.add_argument('--log', '-log',  type=str, default='resnet34', help='')
 
 parser.add_argument('--memory_type', type=str, default='no', help='no,rnn,gru,lstm,san,rmc,dnc')
-parser.add_argument('--dim_type', type=str, default='hw,channel', help='')
+parser.add_argument('--memory_before', type=int, default=1, help='before,after')
+# parser.add_argument('--keep_block_residual', type=int, default=0)
+
+
 parser.add_argument('--include_last', type=int, default=1, help='')
 
 # RMC
@@ -74,11 +78,19 @@ parser.add_argument('--ex_vw',default=False,type=bool)
 #
 # # RNN
 parser.add_argument('--pass_hidden', type=int, default=0, help='pass hidden states through shortcuts')
-parser.add_argument('--rnn_res', type=int, default=0, help='rnn like res')
-parser.add_argument('--memory_position', type=str, default='before', help='before,after')
+parser.add_argument('--rnn_res', type=int, default=1, help='rnn like res')
+
 parser.add_argument('--rnn_ratio', type=float, default=1, help='rnn_memory_size= rnn_ratio*emb_dim')
-parser.add_argument('--rnn_init_type', type=str, default='zeros')
-parser.add_argument('--rnn_integrate_type', type=str, default='add', help='add,concat_linear,update')
+parser.add_argument('--num_downs', type=int, default=2, help='downsample to reduce the cost of  rnn')
+
+parser.add_argument('--conv_activate', type=str, default='lrelu', help='lrelu, relu')
+parser.add_argument('--depth_separate', type=int, default=0, )
+parser.add_argument('--consistent_separate_rnn', type=int, default=0,)
+parser.add_argument('--dcgan_init', type=int, default=0)
+parser.add_argument('--dcgan_kernel',type=int,default=3)
+parser.add_argument('--dcgan_share_conv', type=int, default=0)
+# parser.add_argument('--rnn_init_type', type=str, default='zeros')
+# parser.add_argument('--rnn_integrate_type', type=str, default='add', help='add,concat_linear,update')
 args = parser.parse_args()
 # if not os.path.isdir('logs'):
 #     os.mkdir('logs')
@@ -156,6 +168,12 @@ elif args.model == 'LmRnnSmall56':
     net=LmRnnSmall56(args)
 elif args.model == 'LmRnnSmall110':
     net = LmRnnSmall110(args)
+elif args.model == 'LmRnnKbSmall56':
+    net = LmRnnKbSmall56CIFAR10(args)
+elif args.model == 'LmRnnKbSmall110':
+    net = LmRnnKbSmall110CIFAR10(args)
+elif args.model == 'LmRnnConsistentSmall56':
+    net = LmRnnConsistentSmall56CIFAR10(args)
 net = net.cuda()
 # net = net.to(args.gpu)
 print(net)
@@ -164,6 +182,25 @@ print('| num. model params: {} (num. trained: {})'.format(
             sum(p.numel() for p in net.parameters()),
             sum(p.numel() for p in net.parameters() if p.requires_grad),
         ))
+print('layer| num. model params: {} (num. trained: {})'.format(
+            sum(p.numel() for p in net.layer_list.parameters()),
+            sum(p.numel() for p in net.layer_list.parameters() if p.requires_grad),
+        ))
+print('conv| num. model params: {} (num. trained: {})'.format(
+            sum(p.numel() for p in net.convs_list.parameters()),
+            sum(p.numel() for p in net.convs_list.parameters() if p.requires_grad),
+        ))
+print('deconv| num. model params: {} (num. trained: {})'.format(
+            sum(p.numel() for p in net.deconvs_list.parameters()),
+            sum(p.numel() for p in net.deconvs_list.parameters() if p.requires_grad),
+        ))
+
+# rnn = net.rnn_list if args.consistent_separate_rnn else net.rnn
+print('rnn| num. model params: {} (num. trained: {})'.format(
+            sum(p.numel() for p in net.rnn_list.parameters()),
+            sum(p.numel() for p in net.rnn_list.parameters() if p.requires_grad),
+        ))
+
 print('| num. model params: {} (num. trained: {})'.format(
             sum(p.numel() for p in net.parameters()),
             sum(p.numel() for p in net.parameters() if p.requires_grad),
@@ -182,8 +219,14 @@ if args.resume:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-scheduler = optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[150, 250], gamma=0.1)
+num_epoch = args.epoch
+if args.sch == 0:
+    scheduler = optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=[150, 250], gamma=0.1)
+elif args.sch == 1:
+    scheduler = optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[150, 170], gamma=0.1)
+    num_epoch = 270
 # Training
 def train(epoch):
     print('\nEpoch: %d' % epoch)
@@ -252,7 +295,7 @@ def test(epoch):
 
 
 # f_log.write(str(args))
-for epoch in range(start_epoch, start_epoch+args.epoch):
+for epoch in range(start_epoch, start_epoch + num_epoch):
     train_begin_time = time.time()
     train_acc = train(epoch)
     train_end_time = time.time()
